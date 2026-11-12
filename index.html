@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <!-- 針對行動裝置視口優化，適配瀏海螢幕與底部手勢列 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>陰陽師式神培育手冊</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Noto Serif TC -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+  
+  <style>
+    body {
+      font-family: 'Noto Sans TC', sans-serif;
+      background-color: #0f0f13;
+      color: #e5e7eb;
+      -webkit-tap-highlight-color: transparent;
+    }
+    h1, h2, h3, .serif-font {
+      font-family: 'Noto Serif TC', serif;
+    }
+    /* 隱藏行動裝置橫向滑動卷軸但保留滑動能力 */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+<body class="min-h-screen pb-28 md:pb-16 selection:bg-red-900 selection:text-white">
+  <div id="app">
+    
+    <!-- 頂部導航欄（毛玻璃效果，在手機滑動時半透明置頂） -->
+    <header class="sticky top-0 z-30 bg-[#0f0f13]/90 backdrop-blur-md border-b border-neutral-800/80 px-4 sm:px-6 lg:px-8 py-3 transition">
+      <div class="max-w-7xl mx-auto flex items-center justify-between gap-2">
+        
+        <!-- 左側 LOGO 與連線狀態 -->
+        <div class="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <span class="text-2xl sm:text-3xl select-none">⛩️</span>
+          <div class="min-w-0">
+            <h1 class="text-base sm:text-xl font-bold tracking-wider text-neutral-100 truncate serif-font">
+              式神修行錄
+            </h1>
+            <div class="flex items-center gap-2 mt-0.5">
+              <span v-if="syncStatus === 'connected'" class="inline-flex items-center gap-1 text-[11px] text-emerald-400">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> 雲端連線中
+              </span>
+              <span v-else-if="syncStatus === 'syncing'" class="inline-flex items-center gap-1 text-[11px] text-amber-400">
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span> 同步中...
+              </span>
+              <span v-else class="inline-flex items-center gap-1 text-[11px] text-neutral-500">
+                <span class="w-1.5 h-1.5 rounded-full bg-neutral-600"></span> 離線/未設定
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右側操作按鈕（電腦版顯示完整按鈕，手機版隱藏留給右下角 FAB） -->
+        <div class="flex items-center gap-2">
+          <button @click="openAddModal" class="hidden md:flex bg-red-700 hover:bg-red-600 text-white px-3.5 py-1.5 rounded-lg text-sm font-medium items-center gap-1.5 shadow transition">
+            <span>＋</span> 新增式神
+          </button>
+          <button @click="exportData" class="bg-neutral-800/80 hover:bg-neutral-700 text-neutral-300 border border-neutral-700/80 px-3 py-1.5 rounded-lg text-xs font-medium transition active:scale-95">
+            匯出備份
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- 頁面主體 -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-5">
+      
+      <!-- 統計數據卡片（手機橫向滑動，電腦四格並排） -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-4 mb-5">
+        <div class="bg-neutral-900/70 border border-neutral-800/80 p-3 sm:p-4 rounded-xl">
+          <div class="text-[11px] sm:text-xs text-neutral-400">登錄總數</div>
+          <div class="text-xl sm:text-2xl font-bold text-amber-500 mt-0.5">{{ shikigamiList.length }}</div>
+        </div>
+        <div class="bg-neutral-900/70 border border-neutral-800/80 p-3 sm:p-4 rounded-xl">
+          <div class="text-[11px] sm:text-xs text-neutral-400">技能未滿</div>
+          <div class="text-xl sm:text-2xl font-bold text-red-400 mt-0.5">{{ countSkillIncomplete }}</div>
+        </div>
+        <div class="bg-neutral-900/70 border border-neutral-800/80 p-3 sm:p-4 rounded-xl">
+          <div class="text-[11px] sm:text-xs text-neutral-400">傳記未全解</div>
+          <div class="text-xl sm:text-2xl font-bold text-orange-400 mt-0.5">{{ countBioIncomplete }}</div>
+        </div>
+        <div class="bg-neutral-900/70 border border-neutral-800/80 p-3 sm:p-4 rounded-xl">
+          <div class="text-[11px] sm:text-xs text-neutral-400">全修行完畢</div>
+          <div class="text-xl sm:text-2xl font-bold text-emerald-400 mt-0.5">{{ countCompleted }}</div>
+        </div>
+      </div>
+
+      <!-- 搜尋與智慧篩選（專為觸控螢幕設計的水平滑動列） -->
+      <div class="bg-neutral-900/90 border border-neutral-800/90 rounded-2xl p-3 sm:p-4 mb-6 space-y-3 shadow-lg shadow-black/20">
+        
+        <!-- 搜尋列 -->
+        <div class="relative">
+          <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-neutral-500 text-sm">🔍</span>
+          <input 
+            v-model="searchQuery" 
+            type="text" 
+            placeholder="搜尋式神名稱..." 
+            class="w-full bg-[#16161c] border border-neutral-700/80 text-neutral-100 text-sm rounded-xl pl-9 pr-8 py-2.5 focus:outline-none focus:border-red-500 placeholder-neutral-500"
+          >
+          <button v-if="searchQuery" @click="searchQuery = ''" class="absolute inset-y-0 right-0 pr-3 flex items-center text-neutral-400 hover:text-white text-sm">
+            ✕
+          </button>
+        </div>
+
+        <!-- 稀有度選擇（支援手機單手滑動點擊） -->
+        <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+          <button 
+            @click="filterRarity = 'ALL'" 
+            :class="filterRarity === 'ALL' ? 'bg-neutral-200 text-neutral-900 font-bold' : 'bg-[#181820] text-neutral-400 border border-neutral-800'"
+            class="px-3.5 py-1.5 rounded-full text-xs shrink-0 transition active:scale-95">
+            全部
+          </button>
+          <button 
+            v-for="r in ['UR', 'SP', 'SSR', 'SR', 'R', 'N']" 
+            :key="r"
+            @click="filterRarity = r" 
+            :class="[
+              filterRarity === r ? 'bg-neutral-800 ring-1 ring-inset ring-neutral-500 shadow-sm' : 'bg-[#181820] border border-neutral-800/80',
+              getRarityTextColor(r)
+            ]"
+            class="px-3 py-1.5 rounded-full text-xs font-bold shrink-0 transition active:scale-95">
+            {{ r }}
+          </button>
+        </div>
+
+        <!-- 狀態篩選快捷鍵 -->
+        <div class="flex items-center gap-2 overflow-x-auto no-scrollbar pt-1 border-t border-neutral-800/60">
+          <button 
+            @click="filterStatus = 'all'" 
+            :class="filterStatus === 'all' ? 'bg-red-950/70 border-red-700/80 text-red-200 font-medium' : 'bg-[#16161c] border-neutral-800 text-neutral-400'"
+            class="border px-3 py-1.5 rounded-lg text-xs shrink-0 transition active:scale-95">
+            全部顯示
+          </button>
+          <button 
+            @click="filterStatus = 'skill_unmax'" 
+            :class="filterStatus === 'skill_unmax' ? 'bg-red-950/70 border-red-700/80 text-red-200 font-medium' : 'bg-[#16161c] border-neutral-800 text-neutral-400'"
+            class="border px-3 py-1.5 rounded-lg text-xs shrink-0 transition active:scale-95">
+            ⚠️ 技能未滿 ({{ countSkillIncomplete }})
+          </button>
+          <button 
+            @click="filterStatus = 'bio_unmax'" 
+            :class="filterStatus === 'bio_unmax' ? 'bg-orange-900/60 border-orange-700/80 text-orange-200 font-medium' : 'bg-[#16161c] border-neutral-800 text-neutral-400'"
+            class="border px-3 py-1.5 rounded-lg text-xs shrink-0 transition active:scale-95">
+            📜 傳記未全解 ({{ countBioIncomplete }})
+          </button>
+        </div>
+      </div>
+
+      <!-- 讀取狀態 -->
+      <div v-if="loading" class="text-center py-20 text-neutral-400 text-sm">
+        <span class="inline-block animate-spin mr-2">⏳</span> 正在載入式神名錄...
+      </div>
+
+      <!-- 查無式神狀態 -->
+      <div v-else-if="filteredList.length === 0" class="text-center py-20 bg-neutral-900/30 rounded-2xl border border-neutral-800/50 p-6">
+        <div class="text-4xl mb-3">🍃</div>
+        <p class="text-neutral-400 text-sm">沒有找到符合條件的式神</p>
+        <button @click="openAddModal" class="mt-4 bg-red-700/90 text-white px-4 py-2 rounded-xl text-xs font-medium">
+          新增一隻式神
+        </button>
+      </div>
+
+      <!-- 式神清單（手機單欄全寬，平板2欄，電腦3欄） -->
+      <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+        <div 
+          v-for="item in filteredList" 
+          :key="item.id" 
+          class="bg-[#16161d] border border-neutral-800/90 rounded-2xl p-4 sm:p-5 flex flex-col justify-between shadow-lg shadow-black/10 hover:border-neutral-700/80 transition duration-200"
+        >
+          <div>
+            <!-- 式神卡片標頭與大頭貼 -->
+            <div class="flex items-center justify-between mb-3.5">
+              <div class="flex items-center gap-3 min-w-0">
+                <!-- 大頭貼 -->
+                <div class="w-13 h-13 min-w-[52px] min-h-[52px] rounded-xl bg-neutral-950 border border-neutral-800 overflow-hidden flex items-center justify-center shrink-0">
+                  <img v-if="item.avatar" :src="item.avatar" class="w-full h-full object-cover" alt="頭像" loading="lazy">
+                  <span v-else class="text-2xl text-neutral-600 select-none">👤</span>
+                </div>
+
+                <!-- 稀有度與名稱 -->
+                <div class="min-w-0">
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <span :class="getRarityBadgeClass(item.rarity)" class="text-[11px] px-2 py-0.5 rounded-md font-bold tracking-wider">
+                      {{ item.rarity }}
+                    </span>
+                    <span class="text-base sm:text-lg font-bold text-neutral-100 truncate serif-font">
+                      {{ item.name }}
+                    </span>
+                  </div>
+                  <div class="text-[11px] text-neutral-400 mt-0.5">
+                    傳記進度：{{ getBioProgress(item) }}
+                  </div>
+                </div>
+              </div>
+
+              <!-- 操作按鈕（放大點擊範圍方便手機觸摸） -->
+              <div class="flex items-center gap-1 shrink-0 ml-2">
+                <button @click="editShikigami(item)" class="p-2 text-neutral-400 hover:text-neutral-200 active:scale-95 text-xs">
+                  編輯
+                </button>
+                <button @click="deleteShikigami(item.id)" class="p-2 text-red-400/80 hover:text-red-300 active:scale-95 text-xs">
+                  刪除
+                </button>
+              </div>
+            </div>
+
+            <!-- 技能養成進度 -->
+            <div class="bg-[#111116] p-3 rounded-xl mb-3.5 border border-neutral-800/60">
+              <div class="flex justify-between items-center mb-2">
+                <span class="text-[11px] font-medium text-neutral-400">技能等級</span>
+                <span v-if="isSkillMax(item)" class="text-[10px] bg-emerald-950/80 text-emerald-400 border border-emerald-800/80 px-2 py-0.5 rounded-full font-bold">
+                  ✓ 技能已滿
+                </span>
+                <span v-else class="text-[10px] bg-red-950/80 text-red-400 border border-red-800/80 px-2 py-0.5 rounded-full font-bold">
+                  尚需升級
+                </span>
+              </div>
+              <div class="grid grid-cols-3 gap-2 text-center text-xs">
+                <div class="bg-neutral-900/80 py-2 px-1 rounded-lg border border-neutral-800/40">
+                  <div class="text-[10px] text-neutral-500 mb-0.5">普攻</div>
+                  <div :class="item.skill1 >= item.skill1Max ? 'text-emerald-400 font-bold' : 'text-neutral-200 font-medium'">
+                    {{ item.skill1 }}/{{ item.skill1Max }}
+                  </div>
+                </div>
+                <div class="bg-neutral-900/80 py-2 px-1 rounded-lg border border-neutral-800/40">
+                  <div class="text-[10px] text-neutral-500 mb-0.5">二技能</div>
+                  <div :class="item.skill2 >= item.skill2Max ? 'text-emerald-400 font-bold' : 'text-neutral-200 font-medium'">
+                    {{ item.skill2 }}/{{ item.skill2Max }}
+                  </div>
+                </div>
+                <div class="bg-neutral-900/80 py-2 px-1 rounded-lg border border-neutral-800/40">
+                  <div class="text-[10px] text-neutral-500 mb-0.5">大招</div>
+                  <div :class="item.skill3 >= item.skill3Max ? 'text-emerald-400 font-bold' : 'text-neutral-200 font-medium'">
+                    {{ item.skill3 }}/{{ item.skill3Max }}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 傳記條件（每條傳記擁有足夠觸控高度，單手輕鬆打勾） -->
+            <div class="space-y-1.5">
+              <div class="text-[11px] font-medium text-neutral-400 mb-1">傳記解鎖條件（點擊切換狀態）</div>
+              <div 
+                v-for="(bio, bIndex) in item.biographies" 
+                :key="bIndex" 
+                @click="toggleBio(item, bIndex)"
+                class="flex items-start gap-2.5 p-2.5 rounded-xl cursor-pointer transition select-none text-xs active:bg-neutral-800/60"
+                :class="bio.unlocked ? 'bg-neutral-900/40 opacity-50' : 'bg-[#111116] border border-neutral-800/80'"
+              >
+                <!-- 視覺化自訂核取方塊 -->
+                <div class="mt-0.5 w-4 h-4 rounded border flex items-center justify-center shrink-0 transition"
+                  :class="bio.unlocked ? 'bg-red-600 border-red-600 text-white' : 'border-neutral-600 bg-neutral-950'">
+                  <span v-if="bio.unlocked" class="text-[10px] font-bold">✓</span>
+                </div>
+                <div class="flex-grow min-w-0">
+                  <span class="text-neutral-400 font-medium mr-1.5 shrink-0">傳記 {{ bIndex + 1 }}:</span>
+                  <span :class="bio.unlocked ? 'line-through text-neutral-500' : 'text-neutral-200'">
+                    {{ bio.condition || '未設定條件' }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 備註欄 -->
+          <div v-if="item.notes" class="mt-3.5 pt-2.5 border-t border-neutral-800/60 text-[11px] text-neutral-400 flex items-start gap-1">
+            <span class="shrink-0">💬</span>
+            <span class="truncate">{{ item.notes }}</span>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- 行動裝置專用：右下角單手新增按鈕（Floating Action Button） -->
+    <button 
+      @click="openAddModal" 
+      class="md:hidden fixed bottom-6 right-5 z-40 bg-red-600 text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center text-2xl font-bold active:scale-90 transition shadow-red-950/80"
+      aria-label="新增式神"
+    >
+      ＋
+    </button>
+
+    <!-- 新增 / 編輯 式神彈窗（在手機上作為抽屜式由下往上滑出） -->
+    <div v-if="showModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <div class="bg-[#181820] border-t sm:border border-neutral-700/80 w-full max-w-lg rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        
+        <!-- 彈窗頂部 -->
+        <div class="px-5 py-3.5 border-b border-neutral-800 flex justify-between items-center shrink-0">
+          <h3 class="font-bold text-base text-neutral-100 serif-font">{{ isEditing ? '編輯式神修行' : '登錄新式神' }}</h3>
+          <button @click="showModal = false" class="text-neutral-400 hover:text-white p-1 text-lg leading-none">&times;</button>
+        </div>
+
+        <!-- 彈窗表單區塊（可滾動） -->
+        <form @submit.prevent="saveShikigami" class="p-5 space-y-4 overflow-y-auto custom-scroll text-sm flex-grow">
+          
+          <!-- 大頭貼上傳 -->
+          <div>
+            <label class="block text-xs text-neutral-400 mb-1.5">式神頭像照片</label>
+            <div class="flex items-center gap-3.5">
+              <div class="w-16 h-16 min-w-[64px] rounded-2xl bg-neutral-950 border border-neutral-700/80 overflow-hidden flex items-center justify-center shrink-0">
+                <img v-if="form.avatar" :src="form.avatar" class="w-full h-full object-cover">
+                <span v-else class="text-2xl text-neutral-600">👤</span>
+              </div>
+              <div class="space-y-1.5 min-w-0">
+                <label class="inline-block bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-600 px-3 py-1.5 rounded-xl text-xs font-medium cursor-pointer transition active:scale-95">
+                  選擇相簿照片
+                  <input type="file" @change="handleAvatarUpload" accept="image/*" class="hidden">
+                </label>
+                <button v-if="form.avatar" type="button" @click="form.avatar = ''" class="block text-xs text-red-400 hover:text-red-300">
+                  清除相片
+                </button>
+                <div class="text-[11px] text-neutral-500">已啟用自動壓縮，秒速同步不占空間</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 名稱與稀有度 -->
+          <div class="grid grid-cols-3 gap-2.5 border-t border-neutral-800/80 pt-3.5">
+            <div class="col-span-2">
+              <label class="block text-xs text-neutral-400 mb-1">式神名稱 *</label>
+              <input v-model="form.name" required type="text" placeholder="例：茨木童子" class="w-full bg-neutral-950 border border-neutral-700/80 rounded-xl p-2.5 text-base sm:text-sm focus:outline-none focus:border-red-500">
+            </div>
+            <div>
+              <label class="block text-xs text-neutral-400 mb-1">稀有度</label>
+              <select v-model="form.rarity" class="w-full bg-neutral-950 border border-neutral-700/80 rounded-xl p-2.5 text-base sm:text-sm focus:outline-none focus:border-red-500 font-bold">
+                <option value="UR" class="text-pink-400 font-bold">UR</option>
+                <option value="SP" class="text-red-500 font-bold">SP</option>
+                <option value="SSR" class="text-amber-400 font-bold">SSR</option>
+                <option value="SR" class="text-purple-400 font-bold">SR</option>
+                <option value="R" class="text-blue-400 font-bold">R</option>
+                <option value="N" class="text-neutral-400 font-bold">N</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- 技能等級設定 -->
+          <div class="border-t border-neutral-800/80 pt-3.5">
+            <div class="text-xs font-medium text-neutral-300 mb-2">技能等級 (目前 / 最大)</div>
+            <div class="grid grid-cols-3 gap-2">
+              <div class="bg-neutral-950/60 p-2 rounded-xl border border-neutral-800">
+                <label class="block text-[11px] text-neutral-400 text-center mb-1">普攻</label>
+                <div class="flex items-center justify-center gap-1">
+                  <input v-model.number="form.skill1" type="number" min="1" :max="form.skill1Max" class="w-10 bg-neutral-900 border border-neutral-700 rounded-lg p-1.5 text-center text-sm">
+                  <span class="text-neutral-500">/</span>
+                  <input v-model.number="form.skill1Max" type="number" min="1" max="5" class="w-10 bg-neutral-900 border border-neutral-700 rounded-lg p-1.5 text-center text-sm">
+                </div>
+              </div>
+              <div class="bg-neutral-950/60 p-2 rounded-xl border border-neutral-800">
+                <label class="block text-[11px] text-neutral-400 text-center mb-1">二技能</label>
+                <div class="flex items-center justify-center gap-1">
+                  <input v-model.number="form.skill2" type="number" min="1" :max="form.skill2Max" class="w-10 bg-neutral-900 border border-neutral-700 rounded-lg p-1.5 text-center text-sm">
+                  <span class="text-neutral-500">/</span>
+                  <input v-model.number="form.skill2Max" type="number" min="1" max="5" class="w-10 bg-neutral-900 border border-neutral-700 rounded-lg p-1.5 text-center text-sm">
+                </div>
+              </div>
+              <div class="bg-neutral-950/60 p-2 rounded-xl border border-neutral-800">
+                <label class="block text-[11px] text-neutral-400 text-center mb-1">大招</label>
+                <div class="flex items-center justify-center gap-1">
+                  <input v-model.number="form.skill3" type="number" min="1" :max="form.skill3Max" class="w-10 bg-neutral-900 border border-neutral-700 rounded-lg p-1.5 text-center text-sm">
+                  <span class="text-neutral-500">/</span>
+                  <input v-model.number="form.skill3Max" type="number" min="1" max="5" class="w-10 bg-neutral-900 border border-neutral-700 rounded-lg p-1.5 text-center text-sm">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 傳記條件 -->
+          <div class="border-t border-neutral-800/80 pt-3.5">
+            <div class="text-xs font-medium text-neutral-300 mb-2">傳記解鎖條件</div>
+            <div class="space-y-2">
+              <div v-for="(bio, idx) in form.biographies" :key="idx" class="flex items-center gap-2">
+                <input type="checkbox" v-model="bio.unlocked" class="w-4 h-4 rounded border-neutral-700 bg-neutral-950 text-red-600 shrink-0">
+                <input 
+                  type="text" 
+                  v-model="bio.condition" 
+                  :placeholder="'傳記 ' + (idx + 1) + ' 條件 (例: 升級至30級)'" 
+                  class="flex-grow bg-neutral-950 border border-neutral-700/80 rounded-xl p-2 text-xs focus:outline-none focus:border-red-500"
+                >
+              </div>
+            </div>
+          </div>
+
+          <!-- 備註 -->
+          <div>
+            <label class="block text-xs text-neutral-400 mb-1">備註 (御魂搭配、陣容)</label>
+            <input v-model="form.notes" type="text" placeholder="例：針女/破勢暴傷" class="w-full bg-neutral-950 border border-neutral-700/80 rounded-xl p-2.5 text-xs focus:outline-none focus:border-red-500">
+          </div>
+
+          <!-- 底部固定按鈕 -->
+          <div class="pt-3 flex justify-end gap-2 border-t border-neutral-800">
+            <button type="button" @click="showModal = false" class="flex-1 sm:flex-none px-4 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-xl text-xs transition">
+              取消
+            </button>
+            <button type="submit" class="flex-1 sm:flex-none px-5 py-2.5 bg-red-700 hover:bg-red-600 text-white font-medium rounded-xl text-xs transition">
+              儲存並同步
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Vue 3 & Firebase SDK -->
+  <script type="module">
+    import { createApp, ref, computed, onMounted } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.prod.js';
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+    import { 
+      getFirestore, 
+      collection, 
+      doc, 
+      setDoc, 
+      updateDoc, 
+      deleteDoc, 
+      onSnapshot 
+    } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+    // =========================================================================
+    // ★ 請將你的 Firebase 金鑰貼在下方 ★
+    // =========================================================================
+    const firebaseConfig = {
+ apiKey: "AIzaSyBjvXUUz8ltxsMXNST4oV3nHpXoqGUZXmM",
+  authDomain: "onmyoji-tracker.firebaseapp.com",
+  projectId: "onmyoji-tracker",
+  storageBucket: "onmyoji-tracker.firebasestorage.app",
+  messagingSenderId: "679572065804",
+  appId: "1:679572065804:web:1e6cc725b439d48d74e829",
+  measurementId: "G-65GVSXF2M6"
+    };
+
+    createApp({
+      setup() {
+        const shikigamiList = ref([]);
+        const searchQuery = ref('');
+        const filterRarity = ref('ALL');
+        const filterStatus = ref('all');
+        const loading = ref(true);
+        const syncStatus = ref('connecting');
+
+        const showModal = ref(false);
+        const isEditing = ref(false);
+
+        const form = ref({
+          id: null,
+          name: '',
+          rarity: 'SSR',
+          avatar: '',
+          skill1: 1, skill1Max: 5,
+          skill2: 1, skill2Max: 5,
+          skill3: 1, skill3Max: 5,
+          biographies: [
+            { condition: '', unlocked: false },
+            { condition: '', unlocked: false },
+            { condition: '', unlocked: false }
+          ],
+          notes: ''
+        });
+
+        const isFirebaseConfigured = computed(() => {
+          return firebaseConfig.projectId && firebaseConfig.projectId !== "YOUR_PROJECT_ID";
+        });
+
+        let db = null;
+        let colRef = null;
+
+        onMounted(() => {
+          if (isFirebaseConfigured.value) {
+            try {
+              const app = initializeApp(firebaseConfig);
+              db = getFirestore(app);
+              colRef = collection(db, "shikigami");
+
+              onSnapshot(colRef, (snapshot) => {
+                const list = [];
+                snapshot.forEach(docSnap => {
+                  list.push({ id: docSnap.id, ...docSnap.data() });
+                });
+                shikigamiList.value = list;
+                loading.value = false;
+                syncStatus.value = 'connected';
+              }, (err) => {
+                console.error("Firebase 連線錯誤:", err);
+                syncStatus.value = 'error';
+                loading.value = false;
+              });
+            } catch (e) {
+              console.error(e);
+              syncStatus.value = 'error';
+              loading.value = false;
+            }
+          } else {
+            loading.value = false;
+            syncStatus.value = 'offline';
+            shikigamiList.value = [
+              {
+                id: 'demo_1',
+                name: '大天狗',
+                rarity: 'SSR',
+                avatar: '',
+                skill1: 1, skill1Max: 5,
+                skill2: 1, skill2Max: 5,
+                skill3: 3, skill3Max: 5,
+                biographies: [
+                  { condition: '結界突破取得30次勝利', unlocked: false },
+                  { condition: '升至30級', unlocked: true },
+                  { condition: '技能升級8次', unlocked: false }
+                ],
+                notes: '針女/狂骨群攻'
+              }
+            ];
+          }
+        });
+
+        // 圖片上傳壓縮
+        const handleAvatarUpload = (event) => {
+          const file = event.target.files[0];
+          if (!file) return;
+
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              const maxDim = 160;
+              let width = img.width;
+              let height = img.height;
+
+              if (width > height) {
+                if (width > maxDim) {
+                  height = Math.round((height * maxDim) / width);
+                  width = maxDim;
+                }
+              } else {
+                if (height > maxDim) {
+                  width = Math.round((width * maxDim) / height);
+                  height = maxDim;
+                }
+              }
+
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0, width, height);
+
+              form.value.avatar = canvas.toDataURL('image/jpeg', 0.85);
+            };
+            img.src = e.target.result;
+          };
+          reader.readAsDataURL(file);
+          event.target.value = '';
+        };
+
+        const isSkillMax = (item) => {
+          return item.skill1 >= item.skill1Max &&
+                 item.skill2 >= item.skill2Max &&
+                 item.skill3 >= item.skill3Max;
+        };
+
+        const isBioMax = (item) => {
+          if (!item.biographies || item.biographies.length === 0) return true;
+          return item.biographies.every(b => b.unlocked);
+        };
+
+        const getBioProgress = (item) => {
+          const total = item.biographies.length;
+          const done = item.biographies.filter(b => b.unlocked).length;
+          return `${done}/${total} 已解`;
+        };
+
+        const toggleBio = async (item, index) => {
+          const updatedBiographies = [...item.biographies];
+          updatedBiographies[index].unlocked = !updatedBiographies[index].unlocked;
+          
+          if (isFirebaseConfigured.value && db) {
+            syncStatus.value = 'syncing';
+            try {
+              await updateDoc(doc(db, "shikigami", item.id), {
+                biographies: updatedBiographies
+              });
+              syncStatus.value = 'connected';
+            } catch (err) {
+              console.error("更新失敗:", err);
+            }
+          } else {
+            item.biographies[index].unlocked = updatedBiographies[index].unlocked;
+          }
+        };
+
+        const countSkillIncomplete = computed(() => shikigamiList.value.filter(s => !isSkillMax(s)).length);
+        const countBioIncomplete = computed(() => shikigamiList.value.filter(s => !isBioMax(s)).length);
+        const countCompleted = computed(() => shikigamiList.value.filter(s => isSkillMax(s) && isBioMax(s)).length);
+
+        const filteredList = computed(() => {
+          return shikigamiList.value.filter(item => {
+            const matchName = item.name.toLowerCase().includes(searchQuery.value.trim().toLowerCase());
+            const matchRarity = filterRarity.value === 'ALL' || item.rarity === filterRarity.value;
+            let matchStatus = true;
+            if (filterStatus.value === 'skill_unmax') matchStatus = !isSkillMax(item);
+            else if (filterStatus.value === 'bio_unmax') matchStatus = !isBioMax(item);
+            return matchName && matchRarity && matchStatus;
+          });
+        });
+
+        // 稀有度指定顏色
+        const getRarityTextColor = (rarity) => {
+          switch (rarity) {
+            case 'UR': return 'text-pink-400';
+            case 'SP': return 'text-red-500';
+            case 'SSR': return 'text-amber-400';
+            case 'SR': return 'text-purple-400';
+            case 'R': return 'text-blue-400';
+            case 'N': return 'text-neutral-400';
+            default: return 'text-neutral-400';
+          }
+        };
+
+        const getRarityBadgeClass = (rarity) => {
+          switch (rarity) {
+            case 'UR': return 'text-pink-400 border border-pink-500/40 bg-pink-950/30';
+            case 'SP': return 'text-red-500 border border-red-500/40 bg-red-950/30';
+            case 'SSR': return 'text-amber-400 border border-amber-500/40 bg-amber-950/30';
+            case 'SR': return 'text-purple-400 border border-purple-500/40 bg-purple-950/30';
+            case 'R': return 'text-blue-400 border border-blue-500/40 bg-blue-950/30';
+            case 'N': return 'text-neutral-400 border border-neutral-600 bg-neutral-800/40';
+            default: return 'text-neutral-400 border border-neutral-700 bg-neutral-800';
+          }
+        };
+
+        const openAddModal = () => {
+          isEditing.value = false;
+          form.value = {
+            id: 'shiki_' + Date.now().toString(),
+            name: '',
+            rarity: 'SSR',
+            avatar: '',
+            skill1: 1, skill1Max: 5,
+            skill2: 1, skill2Max: 5,
+            skill3: 1, skill3Max: 5,
+            biographies: [
+              { condition: '', unlocked: false },
+              { condition: '', unlocked: false },
+              { condition: '', unlocked: false }
+            ],
+            notes: ''
+          };
+          showModal.value = true;
+        };
+
+        const editShikigami = (item) => {
+          isEditing.value = true;
+          form.value = JSON.parse(JSON.stringify(item));
+          showModal.value = true;
+        };
+
+        const saveShikigami = async () => {
+          if (isFirebaseConfigured.value && db) {
+            syncStatus.value = 'syncing';
+            try {
+              const docId = form.value.id;
+              const payload = { ...form.value };
+              delete payload.id;
+              await setDoc(doc(db, "shikigami", docId), payload);
+              syncStatus.value = 'connected';
+            } catch (err) {
+              alert("儲存失敗: " + err.message);
+            }
+          } else {
+            const idx = shikigamiList.value.findIndex(s => s.id === form.value.id);
+            if (idx !== -1) shikigamiList.value[idx] = { ...form.value };
+            else shikigamiList.value.unshift({ ...form.value });
+          }
+          showModal.value = false;
+        };
+
+        const deleteShikigami = async (id) => {
+          if (!confirm('確定刪除該式神紀錄嗎？')) return;
+          if (isFirebaseConfigured.value && db) {
+            syncStatus.value = 'syncing';
+            try {
+              await deleteDoc(doc(db, "shikigami", id));
+              syncStatus.value = 'connected';
+            } catch (err) {
+              alert("刪除失敗: " + err.message);
+            }
+          } else {
+            shikigamiList.value = shikigamiList.value.filter(s => s.id !== id);
+          }
+        };
+
+        const exportData = () => {
+          const blob = new Blob([JSON.stringify(shikigamiList.value, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `陰陽師式神名錄_${new Date().toISOString().slice(0, 10)}.json`;
+          a.click();
+          URL.revokeObjectURL(url);
+        };
+
+        return {
+          shikigamiList,
+          searchQuery,
+          filterRarity,
+          filterStatus,
+          filteredList,
+          loading,
+          syncStatus,
+          isFirebaseConfigured,
+          showModal,
+          isEditing,
+          form,
+          countSkillIncomplete,
+          countBioIncomplete,
+          countCompleted,
+          isSkillMax,
+          isBioMax,
+          getBioProgress,
+          toggleBio,
+          getRarityTextColor,
+          getRarityBadgeClass,
+          handleAvatarUpload,
+          openAddModal,
+          editShikigami,
+          saveShikigami,
+          deleteShikigami,
+          exportData
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
